@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trích Lời Thoại Manga</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --text: #1d1d1f; --muted: #6b6b70;
+    --line: #e3e1dc; --accent: #d9480f; --accent-soft: #fff0e8; --ok: #2b8a3e;
+    --box: rgba(217, 72, 15, .9); --box-off: rgba(120, 120, 120, .8);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151517; --panel: #1f1f22; --text: #ececee; --muted: #9a9aa2;
+      --line: #313136; --accent: #ff7a3d; --accent-soft: #3a2418; --ok: #51cf66;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         background: var(--bg); color: var(--text); }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--panel);
+           display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  main { max-width: 1400px; margin: 0 auto; padding: 16px; }
+  button, select { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--text);
+                   border-radius: 8px; padding: 7px 12px; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+
+  #drop { border: 2px dashed var(--line); border-radius: 14px; background: var(--panel); padding: 40px 20px;
+          text-align: center; cursor: pointer; transition: .15s; }
+  #drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  #drop strong { font-size: 17px; display: block; margin-bottom: 6px; }
+  #drop p { color: var(--muted); margin: 4px 0; }
+  .opts { margin-top: 12px; display: flex; gap: 10px; justify-content: center; align-items: center; flex-wrap: wrap; }
+
+  #progress { display: none; margin: 16px 0; background: var(--panel); border: 1px solid var(--line);
+              border-radius: 12px; padding: 12px 16px; }
+  .bar { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; margin-top: 8px; }
+  .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+
+  #workspace { display: none; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; margin-top: 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .panel-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line);
+                flex-wrap: wrap; }
+  .panel-head .title { font-weight: 600; margin-right: auto; }
+  .hint { color: var(--muted); font-size: 12.5px; padding: 6px 12px; border-bottom: 1px solid var(--line); }
+
+  #viewer { position: relative; overflow: auto; max-height: calc(100vh - 210px); background: #0003; }
+  #stage { position: relative; margin: 0 auto; user-select: none; touch-action: none; }
+  #stage img { display: block; width: 100%; height: auto; pointer-events: none; }
+  .box { position: absolute; border: 3px solid var(--box); border-radius: 6px; cursor: pointer; }
+  .box.off { border-color: var(--box-off); border-style: dashed; }
+  .box.sel { box-shadow: 0 0 0 4px #ffd43b; }
+  .box span { position: absolute; top: -3px; left: -3px; background: var(--box); color: #fff; font-size: 12px;
+              font-weight: 700; padding: 0 6px; border-radius: 6px 0 6px 0; }
+  .box.off span { background: var(--box-off); }
+  #draft { position: absolute; border: 2px dashed #ffd43b; background: #ffd43b22; display: none; }
+
+  #list { max-height: calc(100vh - 250px); overflow: auto; }
+  .page-label { position: sticky; top: 0; background: var(--panel); font-size: 12px; font-weight: 600; color: var(--muted);
+                padding: 6px 12px; border-bottom: 1px solid var(--line); cursor: pointer; z-index: 1; }
+  .item { display: grid; grid-template-columns: 22px 28px 1fr auto; gap: 6px; align-items: start; padding: 8px 12px;
+          border-bottom: 1px solid var(--line); }
+  .item.sel { background: var(--accent-soft); }
+  .item.off textarea { opacity: .45; text-decoration: line-through; }
+  .item .num { color: var(--muted); font-size: 12px; padding-top: 6px; text-align: right; }
+  .item input[type=checkbox] { margin-top: 8px; accent-color: var(--accent); }
+  .item textarea { width: 100%; resize: vertical; min-height: 36px; font: inherit; color: var(--text); background: transparent;
+                   border: 1px solid transparent; border-radius: 6px; padding: 5px 7px; }
+  .item textarea:focus { outline: none; border-color: var(--accent); background: var(--bg); }
+  .item .tools { display: flex; flex-direction: column; gap: 2px; }
+  .item .tools button { padding: 0 7px; font-size: 12px; line-height: 20px; }
+  .empty { color: var(--muted); padding: 24px; text-align: center; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg);
+           padding: 8px 16px; border-radius: 8px; opacity: 0; transition: .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+
+  @media (max-width: 860px) {
+    main { padding: 12px 16px; }
+    #workspace { grid-template-columns: 1fr; }
+    #viewer { max-height: 70vh; }
+    #list { max-height: none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Trích Lời Thoại Manga</h1>
+  <span class="sub">PDF/ảnh → chữ trong bong bóng thoại → file .txt</span>
+</header>
+
+<main>
+  <section id="upload">
+    <div id="drop">
+      <strong>Kéo thả file PDF hoặc ảnh vào đây</strong>
+      <p>hoặc bấm để chọn file · PDF, JPG, PNG, WEBP</p>
+      <p>Chỉ lấy chữ trong bong bóng thoại, đọc từ trên xuống, trái sang phải.</p>
+      <input id="file" type="file" accept=".pdf,image/*" hidden>
+    </div>
+    <div class="opts">
+      <label for="engine">OCR:</label>
+      <select id="engine"></select>
+      <label><input type="checkbox" id="fix" checked> Tự sửa lỗi chính tả tiếng Việt</label>
+    </div>
+  </section>
+
+  <section id="progress">
+    <div style="display:flex;gap:10px;align-items:center">
+      <span id="msg" style="margin-right:auto">Đang tải lên…</span>
+      <button id="cancel">Dừng</button>
+    </div>
+    <div class="bar"><div id="barfill"></div></div>
+  </section>
+
+  <section id="workspace">
+    <div class="panel">
+      <div class="panel-head">
+        <span class="title" id="pageTitle">Trang</span>
+        <button id="prev">‹ Trước</button>
+        <select id="pageSel"></select>
+        <button id="next">Sau ›</button>
+      </div>
+      <div class="hint">Bấm vào khung để chọn. Kéo chuột trên ảnh để khoanh thêm bong bóng bị sót — chữ sẽ được đọc tự động.</div>
+      <div id="viewer"><div id="stage"><img id="pageImg" alt="Trang truyện"><div id="draft"></div></div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <span class="title"><span id="count">0</span> lời thoại</span>
+        <button id="copy">Sao chép</button>
+        <button id="download" class="primary">Tải .txt</button>
+        <button id="restart">File khác</button>
+      </div>
+      <div class="hint">Sửa trực tiếp nội dung. Bỏ tích để loại khỏi file. ↑↓ đổi thứ tự.</div>
+      <div id="list"><div class="empty">Đang chờ kết quả…</div></div>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const state = { jobId: null, pages: [], current: 1, sel: null, filename: "dialogue", polling: null };
+
+function toast(text) {
+  const t = $("toast"); t.textContent = text; t.classList.add("show");
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 1800);
+}
+
+// ---------- Engines ----------
+fetch("/api/engines").then(r => r.json()).then(({ engines }) => {
+  const labels = { easyocr: "EasyOCR (chính xác hơn)", tesseract: "Tesseract (nhanh)" };
+  $("engine").innerHTML = engines.length
+    ? engines.map(e => `<option value="${e}">${labels[e] || e}</option>`).join("")
+    : `<option value="">Chưa cài OCR</option>`;
+});
+
+// ---------- Upload ----------
+const drop = $("drop");
+drop.onclick = () => $("file").click();
+$("file").onchange = (e) => e.target.files[0] && upload(e.target.files[0]);
+["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => e.dataTransfer.files[0] && upload(e.dataTransfer.files[0]));
+
+async function upload(file) {
+  state.filename = file.name.replace(/\.[^.]+$/, "") || "dialogue";
+  state.pages = []; state.current = 1; state.sel = null;
+  $("upload").style.display = "none";
+  $("progress").style.display = "block";
+  $("workspace").style.display = "grid";
+  $("msg").textContent = "Đang tải lên…"; $("barfill").style.width = "0";
+  renderList(); renderPage();
+
+  const form = new FormData();
+  form.append("file", file);
+  form.append("engine", $("engine").value);
+  form.append("fix", $("fix").checked);
+  const res = await fetch("/api/jobs", { method: "POST", body: form });
+  const data = await res.json();
+  if (!res.ok) { $("msg").textContent = data.detail || "Tải lên thất bại"; return; }
+  state.jobId = data.id;
+  poll();
+}
+
+async function poll() {
+  const since = state.pages.length ? state.pages[state.pages.length - 1].page : 0;
+  const job = await (await fetch(`/api/jobs/${state.jobId}?since=${since}`)).json();
+  for (const p of job.pages) {
+    p.bubbles.forEach(b => { b.on = !!b.text; b.id = Math.random().toString(36).slice(2); });
+    state.pages.push(p);
+  }
+  if (job.pages.length) { renderPageSelect(); renderList(); if (state.pages.length === 1 || !$("pageImg").src) renderPage(); }
+  const pct = job.total ? Math.round(job.done / job.total * 100) : 0;
+  $("barfill").style.width = pct + "%";
+  $("msg").textContent = job.message + (job.total ? ` · ${pct}%` : "");
+  if (["done", "error", "cancelled"].includes(job.status)) {
+    $("cancel").style.display = "none";
+    if (job.status === "done") setTimeout(() => $("progress").style.display = "none", 1200);
+    return;
+  }
+  $("cancel").style.display = "";
+  state.polling = setTimeout(poll, 1000);
+}
+$("cancel").onclick = () => state.jobId && fetch(`/api/jobs/${state.jobId}/cancel`, { method: "POST" });
+
+// ---------- Page viewer ----------
+const page = () => state.pages.find(p => p.page === state.current);
+
+function renderPageSelect() {
+  $("pageSel").innerHTML = state.pages.map(p => `<option value="${p.page}">${p.page}</option>`).join("");
+  $("pageSel").value = state.current;
+  if (page()) $("pageTitle").textContent = `Trang ${state.current}/${state.pages.length}`;
+}
+$("pageSel").onchange = (e) => goPage(+e.target.value);
+$("prev").onclick = () => goPage(state.current - 1);
+$("next").onclick = () => goPage(state.current + 1);
+
+function goPage(n) {
+  if (!state.pages.find(p => p.page === n)) return;
+  state.current = n; $("pageSel").value = n; renderPage();
+  $("viewer").scrollTop = 0;
+}
+
+function renderPage() {
+  const p = page();
+  const stage = $("stage");
+  stage.querySelectorAll(".box").forEach(b => b.remove());
+  if (!p) { $("pageTitle").textContent = "Trang"; $("pageImg").removeAttribute("src"); return; }
+  $("pageTitle").textContent = `Trang ${p.page}/${state.pages.length}`;
+  const src = `/api/jobs/${state.jobId}/pages/${p.page}.jpg`;
+  if ($("pageImg").getAttribute("src") !== src) $("pageImg").src = src;
+  p.bubbles.forEach((b, i) => {
+    const el = document.createElement("div");
+    el.className = "box" + (b.on ? "" : " off") + (state.sel === b.id ? " sel" : "");
+    Object.assign(el.style, {
+      left: b.x / p.width * 100 + "%", top: b.y / p.height * 100 + "%",
+      width: b.w / p.width * 100 + "%", height: b.h / p.height * 100 + "%",
+    });
+    el.innerHTML = `<span>${i + 1}</span>`;
+    el.onpointerdown = (e) => e.stopPropagation();
+    el.onclick = () => select(b.id, true);
+    stage.appendChild(el);
+  });
+}
+
+function select(id, scrollList) {
+  state.sel = id;
+  renderPage();
+  document.querySelectorAll(".item").forEach(it => it.classList.toggle("sel", it.dataset.id === id));
+  if (scrollList) document.querySelector(`.item[data-id="${id}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+
+// Kéo chuột để khoanh vùng mới
+(() => {
+  const stage = $("stage"), draft = $("draft");
+  let start = null;
+  const pos = (e) => {
+    const r = stage.getBoundingClientRect();
+    return { x: Math.max(0, Math.min(r.width, e.clientX - r.left)), y: Math.max(0, Math.min(r.height, e.clientY - r.top)), r };
+  };
+  stage.addEventListener("pointerdown", (e) => {
+    if (!page()) return;
+    start = pos(e); stage.setPointerCapture(e.pointerId);
+    Object.assign(draft.style, { display: "block", left: start.x + "px", top: start.y + "px", width: 0, height: 0 });
+  });
+  stage.addEventListener("pointermove", (e) => {
+    if (!start) return;
+    const p = pos(e);
+    Object.assign(draft.style, {
+      left: Math.min(p.x, start.x) + "px", top: Math.min(p.y, start.y) + "px",
+      width: Math.abs(p.x - start.x) + "px", height: Math.abs(p.y - start.y) + "px",
+    });
+  });
+  stage.addEventListener("pointerup", async (e) => {
+    if (!start) return;
+    const p = pos(e), s = start; start = null;
+    draft.style.display = "none";
+    const w = Math.abs(p.x - s.x), h = Math.abs(p.y - s.y);
+    if (w < 15 || h < 15) return;
+    const pg = page(), k = pg.width / p.r.width;
+    const region = { x: Math.round(Math.min(p.x, s.x) * k), y: Math.round(Math.min(p.y, s.y) * k),
+                     w: Math.round(w * k), h: Math.round(h * k) };
+    toast("Đang đọc chữ…");
+    const res = await fetch(`/api/jobs/${state.jobId}/pages/${pg.page}/ocr`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(region),
+    });
+    const { text = "" } = await res.json();
+    const b = { ...region, text, on: true, id: Math.random().toString(36).slice(2) };
+    // chèn theo thứ tự đọc: trên -> dưới, trái -> phải
+    let idx = pg.bubbles.findIndex(o => o.y > b.y + b.h / 2 || (Math.abs(o.y - b.y) < b.h / 2 && o.x > b.x));
+    if (idx < 0) idx = pg.bubbles.length;
+    pg.bubbles.splice(idx, 0, b);
+    renderList(); select(b.id, true);
+    toast(text ? "Đã thêm lời thoại" : "Không đọc được chữ, hãy nhập tay");
+  });
+})();
+
+// ---------- Dialogue list ----------
+function renderList() {
+  const list = $("list");
+  if (!state.pages.length) { list.innerHTML = `<div class="empty">Đang chờ kết quả…</div>`; $("count").textContent = 0; return; }
+  list.innerHTML = "";
+  let n = 0;
+  for (const p of state.pages) {
+    const label = document.createElement("div");
+    label.className = "page-label";
+    label.textContent = `Trang ${p.page}` + (p.bubbles.length ? "" : " · không thấy bong bóng");
+    label.onclick = () => goPage(p.page);
+    list.appendChild(label);
+    p.bubbles.forEach((b, i) => {
+      if (b.on) n++;
+      const it = document.createElement("div");
+      it.className = "item" + (b.on ? "" : " off") + (state.sel === b.id ? " sel" : "");
+      it.dataset.id = b.id;
+      it.innerHTML = `<span class="num">${i + 1}</span><input type="checkbox" ${b.on ? "checked" : ""} title="Đưa vào file">
+        <textarea rows="2" placeholder="(trống)"></textarea>
+        <div class="tools"><button data-a="up" title="Lên">↑</button><button data-a="down" title="Xuống">↓</button><button data-a="del" title="Xóa">✕</button></div>`;
+      const ta = it.querySelector("textarea");
+      ta.value = b.text;
+      ta.oninput = () => { b.text = ta.value; };
+      ta.onfocus = () => { if (state.current !== p.page) goPage(p.page); select(b.id, false); };
+      it.querySelector("input").onchange = (e) => { b.on = e.target.checked; renderList(); renderPage(); };
+      it.querySelectorAll("button").forEach(btn => btn.onclick = () => {
+        const a = btn.dataset.a, arr = p.bubbles;
+        if (a === "del") arr.splice(i, 1);
+        if (a === "up" && i > 0) [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]];
+        if (a === "down" && i < arr.length - 1) [arr[i + 1], arr[i]] = [arr[i], arr[i + 1]];
+        if (state.current !== p.page) goPage(p.page);
+        renderList(); renderPage();
+      });
+      list.appendChild(it);
+    });
+  }
+  $("count").textContent = n;
+}
+
+// ---------- Export ----------
+const exportText = () => state.pages.flatMap(p => p.bubbles)
+  .filter(b => b.on && b.text.trim()).map(b => b.text.replace(/\s+/g, " ").trim()).join("\n");
+
+$("download").onclick = () => {
+  const blob = new Blob([exportText()], { type: "text/plain;charset=utf-8" });
+  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: state.filename + ".txt" });
+  a.click(); URL.revokeObjectURL(a.href);
+};
+$("copy").onclick = async () => {
+  try { await navigator.clipboard.writeText(exportText()); toast("Đã sao chép"); } catch { toast("Không sao chép được"); }
+};
+$("restart").onclick = () => {
+  clearTimeout(state.polling);
+  $("workspace").style.display = "none"; $("progress").style.display = "none";
+  $("upload").style.display = ""; $("file").value = "";
+};
+</script>
+</body>
+</html>

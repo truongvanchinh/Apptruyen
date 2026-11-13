@@ -1,0 +1,9 @@
+pymupdf>=1.24
+opencv-python-headless>=4.9
+numpy>=1.26
+fastapi>=0.110
+uvicorn>=0.29
+python-multipart>=0.0.9
+easyocr>=1.7
+# Tuỳ chọn: OCR nhẹ hơn, cần cài thêm Tesseract + gói tiếng Việt (vie)
+pytesseract>=0.3.10
