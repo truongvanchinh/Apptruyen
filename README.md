@@ -72,4 +72,5 @@ Chẩn đoán khi một bong bóng bị sót: đặt `extractor.TRACE = []` trư
 - Chữ kiểu viết tay/nét cọ lớn (tiếng hét) đọc kém; bong bóng chỉ có một ký tự lớn có thể bị sót → dùng khoanh tay.
 - Bong bóng nền màu lưng chừng (không sáng, không tối) bị bỏ qua.
 - Tốc độ trên CPU khoảng 4–5 giây/trang.
-- Hướng nâng cấp: dùng model đọc chữ chuyên tiếng Việt (VietOCR) hoặc fine-tune cho font truyện tranh.
+- Đã thử VietOCR: kém hơn cách ghép hiện tại trên font truyện tranh (0,86 so với 0,98 trên 7 bong bóng mẫu) nên không dùng.
+- Hướng nâng cấp: fine-tune model đọc chữ cho font truyện tranh; thêm ngữ cảnh (cặp từ) cho bước sửa dấu.
