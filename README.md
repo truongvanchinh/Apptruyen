@@ -61,13 +61,14 @@ Hướng tiếp cận là **tìm chữ trước, xét bong bóng sau** (`app/ext
 | Xét bong bóng | Bắn 48 tia từ tâm khối chữ: ≥80% tia phải chạm một đường viền sắc nét ở gần → khối nằm trong vùng kín = bong bóng |
 | Thứ tự đọc | Hàng trên → dưới, trong hàng trái → phải |
 | OCR | Chỉ giữ phần chữ, xoay thẳng chữ nghiêng, chuẩn hoá cỡ chữ; EasyOCR đọc khung chữ, Tesseract sửa dấu |
-| Hậu xử lý | Sửa âm tiết không hợp lệ theo cấu trúc tiếng Việt (`app/vi_fix.py`) |
+| Hậu xử lý | Sửa âm tiết không hợp lệ theo cấu trúc tiếng Việt; sửa dấu theo bảng tần suất từ của `wordfreq` — chỉ đổi một dấu, chỉ khi biến thể phổ biến hơn áp đảo, bỏ qua chữ hai bộ OCR đọc giống nhau (`app/vi_fix.py`) |
 
 Chẩn đoán khi một bong bóng bị sót: đặt `extractor.TRACE = []` trước khi xử lý, sau đó xem lý do từng khối chữ bị loại.
 
 ## Giới hạn hiện tại
 
-- OCR vẫn sai dấu ở một số chữ, nên cần soát lại trước khi dùng.
+- OCR vẫn sai dấu ở một số chữ, nên cần soát lại trước khi dùng. Bước sửa theo tần suất không hiểu ngữ cảnh,
+  nên đôi khi đổi một chữ hiếm nhưng đúng thành chữ phổ biến hơn; bỏ tích "Tự sửa lỗi chính tả" nếu không muốn.
 - Chữ kiểu viết tay/nét cọ lớn (tiếng hét) đọc kém; bong bóng chỉ có một ký tự lớn có thể bị sót → dùng khoanh tay.
 - Bong bóng nền màu lưng chừng (không sáng, không tối) bị bỏ qua.
 - Tốc độ trên CPU khoảng 4–5 giây/trang.

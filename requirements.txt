@@ -5,5 +5,7 @@ fastapi>=0.110
 uvicorn>=0.29
 python-multipart>=0.0.9
 easyocr>=1.7
+# Bảng tần suất từ tiếng Việt để sửa dấu (offline, miễn phí)
+wordfreq>=3.0
 # Tuỳ chọn: OCR nhẹ hơn, cần cài thêm Tesseract + gói tiếng Việt (vie)
 pytesseract>=0.3.10

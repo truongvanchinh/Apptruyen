@@ -23,7 +23,7 @@ from typing import Iterator
 import cv2
 import numpy as np
 
-from .vi_fix import fix_vietnamese, merge_ocr
+from .vi_fix import agreed_words, fix_vietnamese, merge_ocr
 
 # =========================
 # CONFIG
@@ -590,6 +590,7 @@ def ocr_crop(crop: np.ndarray, bg=(255, 255, 255), engine: str | None = None, fi
 
     engine = engine or available_engines()[0]
     dark = sum(bg) < 380
+    confirmed: frozenset = frozenset()
     if engine == "tesseract":
         text = clean_text(_ocr_tesseract(crop, dark))
     else:
@@ -597,8 +598,10 @@ def ocr_crop(crop: np.ndarray, bg=(255, 255, 255), engine: str | None = None, fi
         if engine == "ensemble" and text:
             # Tesseract đọc dấu tốt hơn ở cỡ chữ lớn hơn
             big = cv2.resize(crop, None, fx=1.55, fy=1.55, interpolation=cv2.INTER_CUBIC)
-            text = merge_ocr(text, clean_text(_ocr_tesseract(big, dark)))
-    return fix_vietnamese(text) if fix else text
+            tess = clean_text(_ocr_tesseract(big, dark))
+            confirmed = agreed_words(text, tess)   # hai bộ đọc giống nhau: không sửa theo tần suất
+            text = merge_ocr(text, tess)
+    return fix_vietnamese(text, confirmed) if fix else text
 
 
 def ocr_bubble(image: np.ndarray, bubble: Bubble, engine: str | None = None, fix: bool = True) -> str:

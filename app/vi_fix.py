@@ -96,13 +96,17 @@ def _fix_word(word: str) -> str:
     horned = _add_horns(word)
     if horned != word and is_syllable(horned):
         return horned
+    # Thay ký tự hay bị nhận nhầm; nếu có bảng tần suất thì lấy phương án phổ biến nhất
+    table = _freq() or {}
+    candidates = []
     for i, ch in enumerate(word):
-        options = CONFUSIONS.get(ch.upper(), "")
-        for opt in options:
+        for opt in CONFUSIONS.get(ch.upper(), ""):
             opt = opt if ch.isupper() or ch.isdigit() else opt.lower()
             candidate = word[:i] + opt + word[i + 1:]
             if is_syllable(candidate):
-                return candidate
+                candidates.append(candidate)
+    if candidates:
+        return max(candidates, key=lambda c: table.get(c.lower(), 0.0))  # hoà thì lấy phương án đầu
     return word
 
 
@@ -121,12 +125,109 @@ def _tilde_fix(word: str) -> str:
     return "".join(_join_char(b, s, GRAVE if t == TILDE else t) for b, s, t in map(_split_char, word))
 
 
-def fix_vietnamese(text: str) -> str:
-    """Chỉ sửa khi câu rõ ràng là tiếng Việt (có dấu)."""
+# =========================
+# SỬA DẤU THEO TẦN SUẤT TỪ
+# =========================
+# OCR hay đọc ra một âm tiết hợp lệ nhưng sai dấu ("RỖI" thay vì "RỒI"). Thử các biến thể
+# dấu thanh / dấu mũ trên cùng chữ gốc; chỉ đổi khi biến thể phổ biến hơn áp đảo.
+
+_SHAPES = {"a": ["", "\u0302", "\u0306"], "e": ["", "\u0302"], "o": ["", "\u0302", "\u031b"], "u": ["", "\u031b"]}
+_TONES = ["", "\u0300", "\u0301", "\u0309", "\u0303", "\u0323"]
+_VOWELS = "aeiouy"
+CHANGE_PENALTY = 0.05   # mỗi dấu bị đổi làm giảm điểm 20 lần
+MIN_GAIN = 20           # biến thể phải phổ biến hơn chữ gốc ít nhất chừng này lần (sau khi phạt)
+_freq_table: dict | None | bool = None
+
+
+def _freq() -> dict | None:
+    """Bảng tần suất âm tiết tiếng Việt từ gói `wordfreq` (tuỳ chọn, chạy offline)."""
+    global _freq_table
+    if _freq_table is None:
+        try:
+            from wordfreq import get_frequency_dict
+
+            _freq_table = get_frequency_dict("vi")
+        except Exception:
+            _freq_table = False
+    return _freq_table or None
+
+
+def _variants(core: str):
+    """Sinh (biến thể, số dấu bị đổi) của một âm tiết viết thường."""
+    from itertools import product
+
+    chars = [_split_char(c) for c in core]
+    vowels = [i for i, (b, _, _) in enumerate(chars) if b in _VOWELS]
+    if not vowels or len(vowels) > 3:
+        return
+    old_tone_pos = next((i for i in vowels if chars[i][2]), None)
+    old_tone = chars[old_tone_pos][2] if old_tone_pos is not None else ""
+    tone_positions = [old_tone_pos] if old_tone_pos is not None else vowels
+    for shapes in product(*[_SHAPES.get(chars[i][0], [chars[i][1]]) for i in vowels]):
+        shape_changes = sum(sh != chars[i][1] for i, sh in zip(vowels, shapes))
+        if shape_changes > 1:
+            continue
+        for tone in _TONES:
+            for pos in (tone_positions if tone else tone_positions[:1]):
+                new = list(chars)
+                for i, sh in zip(vowels, shapes):
+                    new[i] = (chars[i][0], sh, tone if (tone and i == pos) else "")
+                changes = shape_changes + (tone != old_tone)
+                if changes == 1:   # chỉ đổi một dấu: đổi nhiều hơn là đoán liều
+                    yield "".join(_join_char(*c) for c in new), changes
+
+
+def _tone_of(word: str) -> str:
+    return next((t for _, _, t in map(_split_char, word) if t), "")
+
+
+def _freq_fix(word: str) -> str:
+    table = _freq()
+    if not table or not (word.isupper() or word.islower()) or len(word) > 7:
+        return word
+    core = word.lower()
+    best, best_score = core, max(table.get(core, 0.0), 1e-7) * MIN_GAIN
+    # chỉ ưu tiên huyền khi chữ mang dấu ngã không có trong bảng từ ("MÃY", "THẴNG")
+    old_is_tilde = _tone_of(core) == TILDE and not table.get(core)
+    for cand, changes in _variants(core):
+        f = table.get(cand, 0.0)
+        if f and is_syllable(cand):
+            score = f * CHANGE_PENALTY ** changes
+            if old_is_tilde and _tone_of(cand) == GRAVE:
+                score *= 20  # huyền bị đọc thành ngã là lỗi OCR phổ biến nhất
+            if score > best_score:
+                best, best_score = cand, score
+    return best.upper() if word.isupper() else best
+
+
+def fix_vietnamese(text: str, protected: frozenset = frozenset()) -> str:
+    """Chỉ sửa khi câu rõ ràng là tiếng Việt (có dấu).
+    `protected`: các chữ đã được xác nhận (hai bộ OCR đọc giống nhau) - không sửa theo tần suất."""
     if not re.search(r"[ăâđêôơưàáạảãằắặẳẵầấậẩẫèéẹẻẽềếệểễìíịỉĩòóọỏõồốộổỗờớợởỡùúụủũừứựửữỳýỵỷỹ]",
                      text.lower()):
         return text
-    return re.sub(r"[^\W_]+", lambda m: _tilde_fix(_fix_word(m.group(0))), text)
+
+    tokens = re.findall(r"[^\W_]+", text)
+    keep = set(protected)
+    for prev, cur in zip(tokens, tokens[1:]):
+        if prev.upper() == cur.upper():
+            keep.add(cur.upper())          # từ láy lặp đôi, tiếng động ("KHỤ KHỤ")
+        if cur.upper() == "NÃY" and _strip_tone(prev) in ("vưa", "luc", "khi", "ban", "hôi"):
+            keep.add("NÃY")                # "vừa nãy", "lúc nãy" là dấu ngã thật
+
+    def fix(match: re.Match) -> str:
+        word = match.group(0)
+        fixed = _tilde_fix(_fix_word(word))
+        # chữ đã được xác nhận thì không đoán lại theo tần suất
+        return fixed if word.upper() in keep else _freq_fix(fixed)
+
+    return re.sub(r"[^\W_]+", fix, text)
+
+
+def agreed_words(easy: str, tess: str) -> frozenset:
+    """Các chữ mà cả hai bộ OCR đọc giống hệt nhau (kể cả dấu)."""
+    words = lambda t: {w.strip(PUNCT).upper() for w in t.split()} - {""}
+    return frozenset(words(easy) & words(tess))
 
 
 # =========================
