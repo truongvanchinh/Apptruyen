@@ -153,7 +153,7 @@ function toast(text) {
 
 // ---------- Engines ----------
 fetch("/api/engines").then(r => r.json()).then(({ engines }) => {
-  const labels = { easyocr: "EasyOCR (chính xác hơn)", tesseract: "Tesseract (nhanh)" };
+  const labels = { ensemble: "Kết hợp EasyOCR + Tesseract (chính xác nhất)", easyocr: "Chỉ EasyOCR", tesseract: "Chỉ Tesseract" };
   $("engine").innerHTML = engines.length
     ? engines.map(e => `<option value="${e}">${labels[e] || e}</option>`).join("")
     : `<option value="">Chưa cài OCR</option>`;

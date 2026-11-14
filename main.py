@@ -23,16 +23,15 @@ def main() -> None:
     if args.debug:
         debug_dir.mkdir(exist_ok=True)
 
-    total, images = extractor.iter_input_images(Path(args.pdf))
+    total, results = extractor.process_document(Path(args.pdf), engine=args.engine, fix=not args.no_fix)
     pages = []
-    for number, image in enumerate(images, 1):
-        page = extractor.process_image(image, number, engine=args.engine, fix=not args.no_fix)
+    for page, image in results:
         pages.append(page)
-        print(f"Trang {number}/{total}: {len(page.bubbles)} bong bóng")
+        print(f"Trang {page.page}/{total}: {len(page.bubbles)} bong bóng")
         for i, b in enumerate(page.bubbles, 1):
             print(f"  {i}. {b.text}")
         if args.debug:
-            cv2.imwrite(str(debug_dir / f"page_{number}.jpg"), extractor.draw_debug(image, page))
+            cv2.imwrite(str(debug_dir / f"page_{page.page}.jpg"), extractor.draw_debug(image, page))
 
     output.write_text(extractor.dialogue_text(pages), encoding="utf-8")
     print(f"\nĐã lưu: {output.resolve()}")

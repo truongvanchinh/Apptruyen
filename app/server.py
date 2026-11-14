@@ -55,22 +55,23 @@ def cleanup_old_jobs() -> None:
 def run_job(job_id: str, path: Path, engine: str, fix: bool) -> None:
     job = jobs[job_id]
     try:
-        total, images = extractor.iter_input_images(path)
+        total, results = extractor.process_document(path, engine=engine, fix=fix)
         job["total"] = total
         job["status"] = "running"
-        for number, image in enumerate(images, 1):
-            if job.get("cancel"):
-                job["status"] = "cancelled"
-                return
-            job["message"] = f"Đang xử lý trang {number}/{total}"
-            page = extractor.process_image(image, number, engine=engine, fix=fix)
+        job["message"] = f"Đang xử lý trang 1/{total}"
+        for page, image in results:
             cv2.imwrite(
-                str(job_dir(job_id) / f"page_{number}.jpg"),
+                str(job_dir(job_id) / f"page_{page.page}.jpg"),
                 cv2.cvtColor(image, cv2.COLOR_RGB2BGR),
                 [cv2.IMWRITE_JPEG_QUALITY, 85],
             )
             job["pages"].append(page.to_dict())
-            job["done"] = number
+            job["done"] = page.page
+            if job.get("cancel"):
+                job["status"] = "cancelled"
+                job["message"] = f"Đã dừng ở trang {page.page}/{total}"
+                return
+            job["message"] = f"Đang xử lý trang {min(page.page + 1, total)}/{total}"
         job["status"] = "done"
         job["message"] = "Hoàn tất"
     except Exception as exc:  # báo lỗi lên giao diện
@@ -92,7 +93,7 @@ async def create_job(file: UploadFile = File(...), engine: str = Form(""), fix: 
 
     available = extractor.available_engines()
     if not available:
-        raise HTTPException(500, "Chưa cài OCR (easyocr hoặc tesseract + gói vie)")
+        raise HTTPException(500, "Chưa cài EasyOCR (pip install easyocr)")
     if engine not in available:
         engine = available[0]
 
@@ -168,7 +169,7 @@ def ocr_region(job_id: str, number: int, region: Region):
         raise HTTPException(404, "Trang chưa sẵn sàng")
     image = extractor.load_image(path)
     bubble = extractor.Bubble(**region.model_dump())
-    return {"text": extractor.ocr_bubble(image, bubble, job["engine"], trim=False, fix=job["fix"])}
+    return {"text": extractor.ocr_bubble(image, bubble, job["engine"], fix=job["fix"])}
 
 
 @app.get("/api/jobs/{job_id}/dialogue.txt", response_class=PlainTextResponse)
