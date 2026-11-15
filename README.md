@@ -49,7 +49,7 @@ python main.py --pdf input/chapter-01.pdf --output output/chapter-01.txt --debug
 
 ## Skill cho Claude
 
-`skills/manga-dialogue/` là một skill dùng lại phần tìm bong bóng của app nhưng để Claude đọc chữ từ ảnh
+`.claude/skills/manga-dialogue/` là một skill dùng lại phần tìm bong bóng của app nhưng để Claude đọc chữ từ ảnh
 bong bóng thay cho OCR (chính xác hơn, đổi lại tốn hạn mức sử dụng Claude). `scripts/manga_bubbles/` là bản sao
 của `app/extractor.py` và `app/vi_fix.py`; sửa bộ nhận diện trong `app/` thì nhớ chép lại sang đó.
 
