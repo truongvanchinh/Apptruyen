@@ -121,28 +121,38 @@ def _render_page(page) -> np.ndarray:
     return _limit_size(image.copy())
 
 
-def _side_bars(image: np.ndarray) -> np.ndarray:
-    """Cột nào gần như đen kín (dải đen hai bên của ảnh chụp màn hình)."""
-    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-    return (gray < 35).mean(axis=0) >= 0.985
+def _page_trim(image: np.ndarray) -> tuple[int, int, int, int]:
+    """Số điểm ảnh cần cắt (trái, phải, trên, dưới) để chỉ còn nội dung truyện.
 
+    Ảnh chụp màn hình webtoon có dải đen hai bên; có loại còn thêm lề trắng bao ngoài dải đen
+    và dải đen không chạy hết chiều cao (lề trắng trên/dưới)."""
+    dark = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY) < 35
+    height, width = dark.shape
+    is_bar = dark.mean(axis=0) >= 0.85
+    min_run, max_margin = max(4, int(width * 0.02)), int(width * 0.08)
 
-def _find_trim(samples: list[np.ndarray]) -> tuple[int, int]:
-    """Số cột cần cắt bên trái/phải, tính chung cho cả tài liệu."""
-    if not samples or len({s.shape[1] for s in samples}) != 1:
-        return 0, 0
-    # theo đa số trang: vài trang có thể bị hình khác đè lên dải đen
-    bars = np.mean([_side_bars(s) for s in samples], axis=0) >= 0.6
-    width = len(bars)
-    left = 0
-    while left < width and bars[left]:
-        left += 1
-    right = 0
-    while right < width - left and bars[width - 1 - right]:
-        right += 1
-    if left + right > width * 0.6:  # trang gần như đen kín: không cắt
-        return 0, 0
-    return left, right
+    def side(columns: np.ndarray) -> tuple[int, int]:
+        """(điểm bắt đầu, điểm kết thúc) của dải đen tính từ mép; (0, 0) nếu không có."""
+        start = 0
+        while start < max_margin and not columns[start]:
+            start += 1  # lề trắng bên ngoài dải đen
+        end = start
+        while end < len(columns) and columns[end]:
+            end += 1
+        return (start, end) if end - start >= min_run and end < len(columns) * 0.4 else (0, 0)
+
+    l0, l1 = side(is_bar)
+    r0, r1 = side(is_bar[::-1])
+    top = bottom = 0
+    if l1 or r1:
+        # hàng nào có dải đen thì mới là phần nội dung
+        cols = np.r_[np.arange(l0, l1), np.arange(width - r1, width - r0)]
+        rows = np.flatnonzero(dark[:, cols].mean(axis=1) >= 0.9)
+        if len(rows):
+            top, bottom = int(rows[0]), int(height - 1 - rows[-1])
+    if l1 + r1 > width * 0.6 or top + bottom > height * 0.5:
+        return 0, 0, 0, 0   # trang gần như đen kín: không cắt
+    return l1, r1, top, bottom
 
 
 def pdf_page_count(pdf_path: str | Path) -> int:
@@ -156,17 +166,24 @@ def pdf_to_images(pdf_path: str | Path) -> Iterator[np.ndarray]:
     import pymupdf
 
     with pymupdf.open(pdf_path) as doc:
-        count = doc.page_count
-        picks = sorted({int(i * (count - 1) / 7) for i in range(8)}) if count > 1 else [0]
-        left, right = _find_trim([_render_page(doc[i]) for i in picks])
-        width = None
+        # Lượt 1: phần cần cắt của từng trang, gom theo kích thước. Tài liệu có thể lẫn vài trang
+        # chụp kiểu khác; mỗi kiểu có lề/dải đen riêng, phải cắt riêng thì các trang mới nối khít nhau.
+        groups: dict[tuple[int, int], list[tuple[int, int, int, int]]] = {}
         for page in doc:
             image = _render_page(page)
-            if width is None:
-                width = image.shape[1]
-            if image.shape[1] == width and (left or right):
-                image = image[:, left:image.shape[1] - right]
-            yield np.ascontiguousarray(image)
+            groups.setdefault(image.shape[:2], []).append(_page_trim(image))
+        # lấy trung vị trong nhóm: vài trang có thể bị hình khác đè lên dải đen
+        trims = {size: tuple(int(v) for v in np.median(t, axis=0)) for size, t in groups.items()}
+        # Bề ngang chuẩn = bề ngang (sau khi cắt) của kiểu trang phổ biến nhất
+        common = max(groups, key=lambda size: len(groups[size]))
+        target = common[1] - trims[common][0] - trims[common][1]
+
+        # Lượt 2: cắt và đưa mọi trang về cùng bề ngang
+        for page in doc:
+            image = _render_page(page)
+            left, right, top, bottom = trims[image.shape[:2]]
+            image = image[top:image.shape[0] - bottom, left:image.shape[1] - right]
+            yield np.ascontiguousarray(_fit_width(image, target))
 
 
 def load_image(path: str | Path) -> np.ndarray:
@@ -410,7 +427,12 @@ def analyze_block(image: np.ndarray, block: list[Line], text_mask: np.ndarray) -
     plain = bg.min() >= 215 or bg.max() <= 50
     need = MIN_RAY_HITS if plain else 0.95
     detail = f"tia={ratio:.2f} mép={edge_hits} mềm={soft} xa={lost}"
-    if ratio < need or edge_hits > 0.4 * N_RAYS:
+    # Sát ngưỡng thì chỉ nhận khi viền là viền thật, không nhờ vào mép trang
+    if not plain or edge_hits > 0.1 * N_RAYS:
+        enclosed = ratio >= need
+    else:
+        enclosed = ratio >= need - 0.05
+    if not enclosed or edge_hits > 0.4 * N_RAYS:
         _trace(block, "không bao kín " + detail)
         # chữ trôi nổi trên nền trang, hoặc chữ lẻ tách khỏi khối chính của một bong bóng
         return Bubble(x=x1, y=y1, w=bw, h=bh, score=0.0, lines=list(block), bg=tuple(int(v) for v in bg))
@@ -654,7 +676,8 @@ def bubble_crop(image: np.ndarray, bubble: Bubble) -> tuple[np.ndarray, tuple]:
 def _fit_width(image: np.ndarray, width: int) -> np.ndarray:
     if image.shape[1] == width:
         return image
-    return cv2.resize(image, (width, max(1, round(image.shape[0] * width / image.shape[1]))))
+    interp = cv2.INTER_AREA if width < image.shape[1] else cv2.INTER_CUBIC
+    return cv2.resize(image, (width, max(1, round(image.shape[0] * width / image.shape[1]))), interpolation=interp)
 
 
 def process_image(image: np.ndarray, page_number: int, ocr: bool = True, engine: str | None = None,
