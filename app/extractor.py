@@ -103,22 +103,31 @@ def _limit_size(image: np.ndarray) -> np.ndarray:
     return cv2.resize(image, (MAX_PAGE_WIDTH, int(h * scale)), interpolation=cv2.INTER_AREA)
 
 
+MAX_RENDER_WIDTH = 2600    # trần khi render, trước khi cắt lề (tránh ảnh quá lớn)
+
+
 def _render_page(page) -> np.ndarray:
+    """Render trang ở độ phân giải gốc của (các) ảnh nhúng, chỉ lấy vùng có ảnh. CHƯA thu nhỏ:
+    phải cắt dải đen/lề xong mới thu, kẻo phần tranh hẹp bị mất nét."""
     import pymupdf
 
     zoom, clip = DPI / 72, None
-    # Trang chỉ gồm một ảnh lớn (truyện scan/chụp màn hình): lấy đúng độ phân giải gốc của ảnh
-    images = page.get_images(full=True)
-    if len(images) == 1:
-        rects = page.get_image_rects(images[0][0])
-        if rects:
-            rect = rects[0] & page.rect
-            if rect.width > 0 and rect.get_area() >= 0.5 * page.rect.get_area():
-                zoom, clip = images[0][2] / rects[0].width, rect
+    # Trang ghép từ một hay nhiều ảnh lớn (truyện scan/chụp màn hình)
+    area, scales, union = 0.0, [], None
+    for item in page.get_images(full=True):
+        for rect in page.get_image_rects(item[0]):
+            visible = rect & page.rect
+            if visible.width > 0 and visible.height > 0:
+                area += visible.get_area()
+                scales.append(item[2] / rect.width)
+                union = visible if union is None else union | visible
+    if union is not None and area >= 0.5 * page.rect.get_area():
+        zoom, clip = max(scales), union
+    zoom = min(zoom, MAX_RENDER_WIDTH / (clip or page.rect).width)
     pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), clip=clip, alpha=False,
                           colorspace=pymupdf.csRGB)
     image = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
-    return _limit_size(image.copy())
+    return image.copy()
 
 
 def _page_trim(image: np.ndarray) -> tuple[int, int, int, int]:
@@ -139,7 +148,7 @@ def _page_trim(image: np.ndarray) -> tuple[int, int, int, int]:
         end = start
         while end < len(columns) and columns[end]:
             end += 1
-        return (start, end) if end - start >= min_run and end < len(columns) * 0.4 else (0, 0)
+        return (start, end) if end - start >= min_run and end < len(columns) * 0.46 else (0, 0)
 
     l0, l1 = side(is_bar)
     r0, r1 = side(is_bar[::-1])
@@ -150,7 +159,8 @@ def _page_trim(image: np.ndarray) -> tuple[int, int, int, int]:
         rows = np.flatnonzero(dark[:, cols].mean(axis=1) >= 0.9)
         if len(rows):
             top, bottom = int(rows[0]), int(height - 1 - rows[-1])
-    if l1 + r1 > width * 0.6 or top + bottom > height * 0.5:
+    # Dải đen có thể rất rộng (tranh chỉ là một dải hẹp giữa trang), miễn phần tranh còn đủ lớn
+    if width - l1 - r1 < width * 0.12 or top + bottom > height * 0.5:
         return 0, 0, 0, 0   # trang gần như đen kín: không cắt
     return l1, r1, top, bottom
 
@@ -176,7 +186,7 @@ def pdf_to_images(pdf_path: str | Path) -> Iterator[np.ndarray]:
         trims = {size: tuple(int(v) for v in np.median(t, axis=0)) for size, t in groups.items()}
         # Bề ngang chuẩn = bề ngang (sau khi cắt) của kiểu trang phổ biến nhất
         common = max(groups, key=lambda size: len(groups[size]))
-        target = common[1] - trims[common][0] - trims[common][1]
+        target = min(MAX_PAGE_WIDTH, common[1] - trims[common][0] - trims[common][1])
 
         # Lượt 2: cắt và đưa mọi trang về cùng bề ngang
         for page in doc:

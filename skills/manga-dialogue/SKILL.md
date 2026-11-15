@@ -1,6 +1,6 @@
 ---
 name: manga-dialogue
-description: Trích lời thoại trong bong bóng thoại của truyện tranh (manga, manhua, manhwa, webtoon) từ file PDF hoặc ảnh ra file .txt, mỗi bong bóng một dòng theo thứ tự đọc. Dùng skill này bất cứ khi nào người dùng gửi PDF/ảnh truyện tranh và muốn lấy chữ, lời thoại, thoại nhân vật, script, transcript, "đọc chữ trong bong bóng", "xuất thoại ra txt", "extract dialogue / speech bubbles", kể cả khi họ chỉ nói "lấy chữ trong truyện này" hay "chép lời thoại chương này". Skill tự tìm và cắt bong bóng bằng script rồi Claude đọc chữ từ ảnh, nên chính xác hơn OCR thường và tốn ít hạn mức hơn đọc cả trang.
+description: Trích lời thoại trong bong bóng thoại của truyện tranh (manga, manhua, manhwa, webtoon) từ file PDF hoặc ảnh ra file .txt, mỗi bong bóng một dòng theo thứ tự đọc; có thêm chế độ "có lời dẫn" viết xen các dòng mô tả cảnh ngắn dựa vào tranh để thành kịch bản đọc liền mạch (dùng cho review, lồng tiếng, tóm tắt truyện). Dùng skill này bất cứ khi nào người dùng gửi PDF/ảnh truyện tranh và muốn lấy chữ, lời thoại, thoại nhân vật, script, kịch bản, transcript, "đọc chữ trong bong bóng", "xuất thoại ra txt", "extract dialogue / speech bubbles", "viết kịch bản review truyện", "thoại kèm mô tả", kể cả khi họ chỉ nói "lấy chữ trong truyện này" hay "chép lời thoại chương này". Skill tự tìm và cắt bong bóng bằng script rồi Claude đọc chữ từ ảnh, nên chính xác hơn OCR thường và tốn ít hạn mức hơn đọc cả trang.
 ---
 
 # Trích lời thoại truyện tranh
@@ -22,6 +22,7 @@ Cách làm chia hai phần, mỗi phần giao cho bên làm tốt nhất:
 ```bash
 pip install pymupdf opencv-python-headless numpy easyocr   # nếu chưa có
 python <thư mục skill>/scripts/extract_bubbles.py "<file.pdf>" <thư_mục_làm_việc>
+# thêm --narrate nếu người dùng muốn kịch bản có lời dẫn (xem "Chế độ có lời dẫn")
 ```
 
 Khoảng 2–5 giây mỗi trang trên CPU; với chương dài hãy chạy nền và chờ. Lần đầu EasyOCR tải model
@@ -65,6 +66,59 @@ thứ tự số, không kèm số thứ tự hay số trang trừ khi người d
 Báo lại ngắn gọn: số lời thoại đã chép, số ô đã bỏ qua và vì sao, các chỗ `[?]` kèm số trang để
 người dùng soát. Đừng dán toàn bộ nội dung chương vào khung chat; đưa file là đủ, chỉ trích vài
 dòng nếu cần minh hoạ.
+
+## Chế độ có lời dẫn
+
+Dùng khi người dùng muốn kịch bản đọc liền mạch chứ không chỉ lời thoại: "có mô tả", "kèm lời dẫn",
+"để khỏi cụt", "kịch bản review", hoặc họ đưa một file mẫu có các dòng tả cảnh xen giữa lời thoại.
+Nếu không rõ họ muốn loại nào, hỏi một câu trước khi chạy, vì chế độ này tốn hạn mức hơn (phải nhìn
+cả trang, không chỉ bong bóng).
+
+Chạy script với `--narrate`. Ngoài `sheets/`, script xuất thêm `scenes/scene_01.jpg`, ...: mỗi tấm
+là 4 trang xếp cạnh nhau, đọc từ trái sang phải, mỗi trang từ trên xuống. Bong bóng được khoanh đỏ
+và đánh cùng số `#n` như trong `sheets/`.
+
+Cách làm:
+
+1. Đọc lần lượt các tấm trong `scenes/`. Đây là nguồn chính: vừa thấy cảnh, vừa đọc được thoại,
+   kể cả bong bóng script không khoanh (script có thể sót; tranh thì không).
+2. Chỉ mở tấm tương ứng trong `sheets/` khi chữ trong `scenes/` bị nhỏ, bị nhãn số che, hoặc bạn
+   không chắc một dấu. Không cần mở hết.
+3. Viết file theo dòng thời gian của truyện, xen hai loại dòng:
+   - **Lời thoại**: nguyên văn trong bong bóng và ô chú thích, mỗi bong bóng một dòng, viết hoa đầu
+     câu và tên riêng (không viết hoa toàn bộ), giữ dấu câu như in.
+   - **Lời dẫn**: câu ngắn do bạn viết từ tranh, viết thường cả dòng, kết bằng dấu phẩy. Nói ai
+     làm gì, ở đâu, biểu cảm ra sao, đủ để người nghe không nhìn tranh vẫn theo được.
+
+Viết lời dẫn thế nào cho tốt:
+
+- Một dòng cho mỗi nhịp truyện, không phải mỗi khung tranh. Cảnh hành động hay chuyển cảnh thì tả
+  kỹ hơn; đoạn hai người đối đáp liên tục thì chỉ cần một dòng mở đầu kiểu "cô quay lại đáp,".
+- Trước một lời thoại đổi người nói, thêm dòng dẫn ngắn cho biết ai nói ("tên cầm đầu gạt đi,").
+  Thiếu dòng này là chỗ người nghe dễ bị lạc nhất.
+- Tiếng động và chữ hiệu ứng trong tranh (ÀO, VÈO, KHỤ KHỤ) đưa vào lời dẫn thay vì chép thành
+  dòng riêng: "vèo, một mũi tên lao tới,".
+- Chỉ tả điều thấy được trong tranh. Đừng đoán tên, quan hệ hay động cơ mà truyện chưa nói; khi
+  chưa biết tên thì gọi theo đặc điểm ("chàng trai tóc xanh", "tên cầm đầu") cho tới khi có người
+  gọi tên.
+- Giọng văn theo người dùng. Mặc định trung tính. Nếu họ đưa file mẫu hoặc dặn riêng (ví dụ gọi
+  nữ chính là "nữ 9", thêm vài câu bình luận vui), làm theo đúng kiểu đó nhưng tiết chế: vài câu
+  cả chương là đủ, nhiều quá sẽ lấn át truyện.
+- Bỏ watermark, lời kêu gọi like/share, trang giới thiệu nhóm dịch và phần giao diện trang web lọt
+  vào ảnh.
+
+Ví dụ về nhịp điệu (nội dung minh hoạ):
+
+```
+trong rừng đêm, một cô gái bị dồn tới mép vực,
+Các người là ai?
+tên cầm đầu cười khẩy,
+Chỉ là người được thuê thôi.
+cô cắn môi, rồi ngả người ra sau,
+```
+
+Ghi file `<tên file gốc>.txt` và báo cáo như Bước 3, thêm một ý: lời dẫn là cách hiểu của bạn từ
+tranh, người dùng nên soát những chỗ quan trọng về cốt truyện.
 
 ## Lưu ý về giới hạn
 
