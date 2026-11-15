@@ -107,6 +107,11 @@ def _fix_word(word: str) -> str:
                 candidates.append(candidate)
     if candidates:
         return max(candidates, key=lambda c: table.get(c.lower(), 0.0))  # hoà thì lấy phương án đầu
+    # Ký tự rác dính ở đầu/cuối chữ do nét viền bong bóng ("WTIẾNG" -> "TIẾNG", "NGỖIC" -> "NGỖI")
+    if table and len(word) >= 3:
+        for candidate in (word[1:], word[:-1]):
+            if is_syllable(candidate) and (table.get(candidate.lower()) or table.get(_freq_fix(candidate).lower())):
+                return candidate
     return word
 
 
@@ -200,6 +205,13 @@ def _freq_fix(word: str) -> str:
     return best.upper() if word.isupper() else best
 
 
+# chữ dấu ngã -> các chữ đứng trước (đã bỏ dấu thanh) mà khi đó dấu ngã là đúng
+TILDE_CONTEXTS = {
+    "nãy": {"vưa", "luc", "khi", "ban", "hôi"},                                   # vừa nãy, lúc nãy...
+    "não": {"bô", "đâu", "tri", "oc", "phiên", "sâu", "ao", "tây", "chât", "mang", "vo"},  # bộ não, phiền não...
+}
+
+
 def fix_vietnamese(text: str, protected: frozenset = frozenset()) -> str:
     """Chỉ sửa khi câu rõ ràng là tiếng Việt (có dấu).
     `protected`: các chữ đã được xác nhận (hai bộ OCR đọc giống nhau) - không sửa theo tần suất."""
@@ -212,11 +224,18 @@ def fix_vietnamese(text: str, protected: frozenset = frozenset()) -> str:
     for prev, cur in zip(tokens, tokens[1:]):
         if prev.upper() == cur.upper():
             keep.add(cur.upper())          # từ láy lặp đôi, tiếng động ("KHỤ KHỤ")
-        if cur.upper() == "NÃY" and _strip_tone(prev) in ("vưa", "luc", "khi", "ban", "hôi"):
-            keep.add("NÃY")                # "vừa nãy", "lúc nãy" là dấu ngã thật
+
+    previous = [""]
 
     def fix(match: re.Match) -> str:
         word = match.group(0)
+        before, previous[0] = previous[0], word
+        # Chữ dấu ngã chỉ đúng trong vài ngữ cảnh ("vừa nãy", "bộ não"); còn lại là huyền bị đọc nhầm
+        contexts = TILDE_CONTEXTS.get(word.lower())
+        if contexts is not None and (word.isupper() or word.islower()):
+            if _strip_tone(before) in contexts:
+                return word
+            return "".join(_join_char(b, sh, GRAVE if t == TILDE else t) for b, sh, t in map(_split_char, word))
         fixed = _tilde_fix(_fix_word(word))
         # chữ đã được xác nhận thì không đoán lại theo tần suất
         return fixed if word.upper() in keep else _freq_fix(fixed)

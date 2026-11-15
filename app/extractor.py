@@ -533,6 +533,7 @@ def sort_bubbles(bubbles: list[Bubble]) -> list[Bubble]:
 # =========================
 
 def clean_text(text: str) -> str:
+    text = re.sub(r"[@<>|\\_=^{}\[\]#*]", " ", text)   # ký hiệu không có trong lời thoại, do nét vẽ
     text = re.sub(r"\s+", " ", text).strip()
     letters = [c for c in text if c.isalpha()]
     if not letters:
@@ -556,6 +557,9 @@ def is_junk(text: str) -> bool:
     ascii_only = all(ord(c) < 128 for c in letters)
     if ascii_only and WATERMARK_WORDS.search(text):
         return True
+    words = re.findall(r"[^\W\d_]+", text)
+    if len(words) >= 2 and all(len(w) == 1 for w in words):
+        return True   # toàn chữ cái rời rạc ("h n"): nét vẽ hiệu ứng
     return len(letters) == 1 and letters[0].upper() not in "AĂÂEÊIOÔƠUƯYÀÁẢÃẠÈÉẺẼẸÌÍỈĨỊÒÓỎÕỌÙÚỦŨỤỪỨỬỮỰỜỚỞỠỢỒỐỔỖỘ"
 
 
@@ -652,8 +656,15 @@ def bubble_crop(image: np.ndarray, bubble: Bubble) -> tuple[np.ndarray, tuple]:
     mask = np.zeros(crop.shape[:2], np.uint8)
     for line in bubble.lines:
         cv2.fillPoly(mask, [cv2.convexHull((line.poly - [x1, y1]).astype(np.int32))], 255)
+    tight = cv2.dilate(mask, np.ones((2 * (pad // 3) + 1, 2 * (pad // 3) + 1), np.uint8))
     mask = cv2.dilate(mask, np.ones((2 * pad + 1, 2 * pad + 1), np.uint8))
     crop[mask == 0] = bubble.bg
+    # Nét viền bong bóng lọt vào phần lề: xoá các mảng mực nằm chủ yếu ngoài vùng sát dòng chữ
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(_ink_mask(crop, bubble.bg))
+    inside = np.bincount(labels[tight > 0], minlength=count)
+    for i in range(1, count):
+        if inside[i] < 0.3 * stats[i, cv2.CC_STAT_AREA]:
+            crop[labels == i] = bubble.bg
 
     # Chữ nghiêng: xoay cho nằm ngang trước khi đọc
     angle = float(np.median([l.angle for l in bubble.lines]))
