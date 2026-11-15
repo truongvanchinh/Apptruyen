@@ -41,6 +41,10 @@ N_RAYS = 48
 MIN_RAY_HITS = 0.8         # tỉ lệ tia phải chạm viền bong bóng
 MAX_TEXT_SATURATION = 45   # chữ có màu (không đen/xám/trắng) = watermark/hiệu ứng
 
+SKIP_BIG_TEXT = True       # bỏ chữ nét cọ / tiếng hét cỡ lớn (OCR đọc kém, không phải lời thoại thường)
+BIG_TEXT_WIDTH_RATIO = 0.12  # dòng chữ cao hơn 12% bề ngang trang
+BIG_TEXT_RATIO = 2.5         # hoặc cao gấp 2,5 lần cỡ chữ lời thoại điển hình của tài liệu
+
 TARGET_CHAR_HEIGHT = 23    # cỡ chữ (px) cho kết quả OCR tốt nhất
 WATERMARK_RE = re.compile(r"\w\s*\.\s*(shop|com|net|org|vn|info|xyz|site|top|club)\b", re.I)
 WATERMARK_WORDS = re.compile(r"manga|merge|cloud|\bcom\b|\bshop\b|team", re.I)  # chỉ xét khi chữ không dấu
@@ -654,9 +658,11 @@ def _fit_width(image: np.ndarray, width: int) -> np.ndarray:
 
 
 def process_image(image: np.ndarray, page_number: int, ocr: bool = True, engine: str | None = None,
-                  fix: bool = True, prev: np.ndarray | None = None, nxt: np.ndarray | None = None) -> PageResult:
+                  fix: bool = True, prev: np.ndarray | None = None, nxt: np.ndarray | None = None,
+                  heights: list[float] | None = None) -> PageResult:
     """Xử lý một trang. `prev`/`nxt` là trang liền trước/sau (nếu có) để ghép ngữ cảnh:
-    bong bóng bị cắt ở mép trang sẽ được nhìn thấy trọn vẹn và gán cho trang chứa tâm khối chữ."""
+    bong bóng bị cắt ở mép trang sẽ được nhìn thấy trọn vẹn và gán cho trang chứa tâm khối chữ.
+    `heights`: cỡ chữ của các lời thoại đã nhận trước đó trong tài liệu (để nhận ra chữ to bất thường)."""
     H, W = image.shape[:2]
     parts, offset = [], 0
     if prev is not None:
@@ -676,8 +682,15 @@ def process_image(image: np.ndarray, page_number: int, ocr: bool = True, engine:
         if offset <= (ty1 + ty2) / 2 < offset + H:  # còn lại thuộc trang trước/sau
             bubbles.append(b)
 
+    heights = heights if heights is not None else []
     kept = []
     for b in sort_bubbles(bubbles):
+        # Chữ nét cọ / tiếng hét, tiếng động lớn: to bất thường so với lời thoại -> bỏ, không đọc
+        line_h = float(np.median([l.h for l in b.lines]))
+        typical = float(np.median(heights)) if len(heights) >= 5 else None
+        if SKIP_BIG_TEXT and (line_h > BIG_TEXT_WIDTH_RATIO * W or (typical and line_h > BIG_TEXT_RATIO * typical)):
+            continue
+        heights.append(line_h)
         if ocr:
             b.text = ocr_bubble(window, b, engine, fix)
             if is_junk(b.text):
@@ -697,10 +710,11 @@ def process_document(path: Path, ocr: bool = True, engine: str | None = None,
     def run() -> Iterator[tuple[PageResult, np.ndarray]]:
         prev = cur = None
         number = 0
+        heights: list[float] = []
         for nxt in chain(images, [None]):
             if cur is not None:
                 number += 1
-                yield process_image(cur, number, ocr, engine, fix, prev, nxt), cur
+                yield process_image(cur, number, ocr, engine, fix, prev, nxt, heights), cur
             prev, cur = cur, nxt
 
     return total, run()

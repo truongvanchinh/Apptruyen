@@ -69,7 +69,7 @@ Chẩn đoán khi một bong bóng bị sót: đặt `extractor.TRACE = []` trư
 
 - OCR vẫn sai dấu ở một số chữ, nên cần soát lại trước khi dùng. Bước sửa theo tần suất không hiểu ngữ cảnh,
   nên đôi khi đổi một chữ hiếm nhưng đúng thành chữ phổ biến hơn; bỏ tích "Tự sửa lỗi chính tả" nếu không muốn.
-- Chữ kiểu viết tay/nét cọ lớn (tiếng hét) đọc kém; bong bóng chỉ có một ký tự lớn có thể bị sót → dùng khoanh tay.
+- Chữ nét cọ / tiếng hét cỡ lớn bị bỏ qua có chủ ý (`SKIP_BIG_TEXT` trong `app/extractor.py`; đặt `False` nếu muốn đọc cả loại này). Cần thì dùng khoanh tay.
 - Bong bóng nền màu lưng chừng (không sáng, không tối) bị bỏ qua.
 - Tốc độ trên CPU khoảng 4–5 giây/trang.
 - Đã thử VietOCR: kém hơn cách ghép hiện tại trên font truyện tranh (0,86 so với 0,98 trên 7 bong bóng mẫu) nên không dùng.
